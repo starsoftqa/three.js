@@ -261,7 +261,9 @@ Object.assign( Curve.prototype, {
 
 	},
 
-	computeFrenetFrames: function ( segments, closed ) {
+	computeFrenetFrames: function ( segments, closed, delta ) {
+
+		var nSeg = segments || this.curves.length * 2;
 
 		// see http://www.cs.indiana.edu/pub/techreports/TR425.pdf
 
@@ -276,15 +278,46 @@ Object.assign( Curve.prototype, {
 
 		var i, u, theta;
 
+		var totalLen = 0;
+		if( !segments ){
+
+			i = this.curves.length;
+			while( i-- ){
+
+				totalLen += this.curves[ i ].getLength();
+
+			}
+
+		}
+		var len = 0;
+		var cumLen = 0;
+
 		// compute the tangent vectors for each segment on the curve
 
-		for ( i = 0; i <= segments; i ++ ) {
+		for ( i = 0; i <= nSeg; i ++ ) {
 
-			u = i / segments;
+			// If regular segments, u is at fixed intervals
+			if(segments){
+
+				u = i / nSeg;
+
+			// Otherwise u is at variable intervals, that coincide with curve end-points
+			}else{
+
+				if( i % 2 ){
+
+					len = this.curves[ ~~(i / 2) ].getLength(); cumLen += len;
+
+				}
+				u = cumLen / totalLen;
+				u += ( i === 0 || i === nSeg ? 0 : i % 2 ? -delta : delta ) * len / totalLen;
+
+			}
 
 			tangents[ i ] = this.getTangentAt( u );
 			tangents[ i ].normalize();
 
+//console.log("i", i, "u", u, "tangent", tangents[i]);
 		}
 
 		// select an initial normal vector perpendicular to the first tangent vector,
@@ -325,7 +358,7 @@ Object.assign( Curve.prototype, {
 
 		// compute the slowly-varying normal and binormal vectors for each segment on the curve
 
-		for ( i = 1; i <= segments; i ++ ) {
+		for ( i = 1; i <= nSeg; i ++ ) {
 
 			normals[ i ] = normals[ i - 1 ].clone();
 
@@ -351,16 +384,16 @@ Object.assign( Curve.prototype, {
 
 		if ( closed === true ) {
 
-			theta = Math.acos( _Math.clamp( normals[ 0 ].dot( normals[ segments ] ), - 1, 1 ) );
-			theta /= segments;
+			theta = Math.acos( _Math.clamp( normals[ 0 ].dot( normals[ nSeg ] ), - 1, 1 ) );
+			theta /= nSeg;
 
-			if ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ segments ] ) ) > 0 ) {
+			if ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ nSeg ] ) ) > 0 ) {
 
 				theta = - theta;
 
 			}
 
-			for ( i = 1; i <= segments; i ++ ) {
+			for ( i = 1; i <= nSeg; i ++ ) {
 
 				// twist a little...
 				normals[ i ].applyMatrix4( mat.makeRotationAxis( tangents[ i ], theta * i ) );
