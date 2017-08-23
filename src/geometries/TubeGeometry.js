@@ -172,7 +172,7 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 			normals.push( normal.x, normal.y, normal.z );
 
 			// vertex
-			var r = radiusFn( P, i );
+			var r = radiusFn( P, N, tubularSegments ? i : ~~((i+1) / 2));
 			vertex.x = P.x + r * normal.x;
 			vertex.y = P.y + r * normal.y;
 			vertex.z = P.z + r * normal.z;

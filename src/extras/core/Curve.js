@@ -310,8 +310,8 @@ Object.assign( Curve.prototype, {
 
 				}
 				u = cumLen / totalLen;
-				u += ( i === 0 || i === nSeg ? 0 : i % 2 ? -delta : delta ) * len / totalLen;
-
+				u += ( i % 2 ? -delta : delta ) * len / totalLen;
+				u = Math.min(Math.max(u, 0), 1);
 			}
 
 			tangents[ i ] = this.getTangentAt( u );
