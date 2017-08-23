@@ -74,6 +74,7 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 	var nSegC = closed ? nSeg + 1 : nSeg;
 	var delta = 0.01; // Proportion along segment at which to generate cylinder rings
 	var frames = path.computeFrenetFrames( tubularSegments, closed, delta );
+	var radiusFn = typeof(radius) === 'function' ? radius : function(){ return radius; };
 
 	// expose internals
 
@@ -171,10 +172,10 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 			normals.push( normal.x, normal.y, normal.z );
 
 			// vertex
-
-			vertex.x = P.x + radius * normal.x;
-			vertex.y = P.y + radius * normal.y;
-			vertex.z = P.z + radius * normal.z;
+			var r = radiusFn( P, i );
+			vertex.x = P.x + r * normal.x;
+			vertex.y = P.y + r * normal.y;
+			vertex.z = P.z + r * normal.z;
 
 			vertices.push( vertex.x, vertex.y, vertex.z );
 
