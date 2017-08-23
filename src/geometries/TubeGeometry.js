@@ -16,7 +16,7 @@ import { Vector3 } from '../math/Vector3';
 
 // TubeGeometry
 
-function TubeGeometry( path, tubularSegments, radius, radialSegments, closed, taper ) {
+function TubeGeometry( path, tubularSegments, radius, radialSegments, closed, capped ) {
 
 	Geometry.call( this );
 
@@ -30,9 +30,7 @@ function TubeGeometry( path, tubularSegments, radius, radialSegments, closed, ta
 		closed: closed
 	};
 
-	if ( taper !== undefined ) console.warn( 'THREE.TubeGeometry: taper has been removed.' );
-
-	var bufferGeometry = new TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed );
+	var bufferGeometry = new TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed, capped );
 
 	// expose internals
 
@@ -52,7 +50,7 @@ TubeGeometry.prototype.constructor = TubeGeometry;
 
 // TubeBufferGeometry
 
-function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed ) {
+function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed, capped ) {
 
 	BufferGeometry.call( this );
 
@@ -71,7 +69,7 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 	closed = closed || false;
 
 	var nSeg = tubularSegments || path.curves.length * 2 - 1;
-	var nSegC = closed ? nSeg + 1 : nSeg;
+	var nSegC = closed ? nSeg + 1 : capped ? nSeg + 2: nSeg;
 	var delta = 0.01; // Proportion along segment at which to generate cylinder rings
 	var frames = path.computeFrenetFrames( tubularSegments, closed, delta );
 	var radiusFn = typeof(radius) === 'function' ? radius : function(){ return radius; };
@@ -113,6 +111,12 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 	function generateBufferData() {
 
+		if( capped && !closed ){
+
+			generateSegment( 0, true );
+
+		}
+
 		for ( i = 0; i <= nSeg; i ++ ) {
 
 			generateSegment( i );
@@ -128,6 +132,10 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 			generateSegment( 0 );
 
+		}else if( capped ){
+
+			generateSegment( nSeg, true );
+
 		}
 
 		// uvs are generated in a separate function.
@@ -141,7 +149,7 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 	}
 
-	function generateSegment( i ) {
+	function generateSegment( i, isCap ) {
 
 		// we use getPointAt to sample evenly distributed points from the given path
 
@@ -169,10 +177,19 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 			normal.z = ( cos * N.z + sin * B.z );
 			normal.normalize();
 
-			normals.push( normal.x, normal.y, normal.z );
+			// Surface normals depend on whether it is a cap
+			if(isCap){
+
+				normals.push( N.x, N.y, N.z );
+
+			}else{
+
+				normals.push( normal.x, normal.y, normal.z );
+
+			}
 
 			// vertex
-			var r = radiusFn( P, N, tubularSegments ? i : ~~((i+1) / 2));
+			var r = isCap ? 0 : radiusFn( P, N, tubularSegments ? i : ~~((i+1) / 2));
 			vertex.x = P.x + r * normal.x;
 			vertex.y = P.y + r * normal.y;
 			vertex.z = P.z + r * normal.z;
