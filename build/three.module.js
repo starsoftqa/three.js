@@ -25731,7 +25731,7 @@ DodecahedronBufferGeometry.prototype.constructor = DodecahedronBufferGeometry;
 
 // TubeGeometry
 
-function TubeGeometry( path, tubularSegments, radius, radialSegments, closed, taper ) {
+function TubeGeometry( path, tubularSegments, radius, radialSegments, closed, capped ) {
 
 	Geometry.call( this );
 
@@ -25745,9 +25745,7 @@ function TubeGeometry( path, tubularSegments, radius, radialSegments, closed, ta
 		closed: closed
 	};
 
-	if ( taper !== undefined ) console.warn( 'THREE.TubeGeometry: taper has been removed.' );
-
-	var bufferGeometry = new TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed );
+	var bufferGeometry = new TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed, capped );
 
 	// expose internals
 
@@ -25767,7 +25765,7 @@ TubeGeometry.prototype.constructor = TubeGeometry;
 
 // TubeBufferGeometry
 
-function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed ) {
+function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, closed, capped ) {
 
 	BufferGeometry.call( this );
 
@@ -25781,12 +25779,15 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 		closed: closed
 	};
 
-	tubularSegments = tubularSegments || 64;
 	radius = radius || 1;
 	radialSegments = radialSegments || 8;
 	closed = closed || false;
 
-	var frames = path.computeFrenetFrames( tubularSegments, closed );
+	var nSeg = tubularSegments || path.curves.length * 2 - 1;
+	var nSegC = closed ? nSeg + 1 : capped ? nSeg + 2: nSeg;
+	var delta = 0.01; // Proportion along segment at which to generate cylinder rings
+	var frames = path.computeFrenetFrames( tubularSegments, closed, delta );
+	var radiusFn = typeof(radius) === 'function' ? radius : function(){ return radius; };
 
 	// expose internals
 
@@ -25799,6 +25800,7 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 	var vertex = new Vector3();
 	var normal = new Vector3();
 	var uv = new Vector2();
+
 
 	var i, j;
 
@@ -25824,7 +25826,13 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 	function generateBufferData() {
 
-		for ( i = 0; i < tubularSegments; i ++ ) {
+		if( capped && !closed ){
+
+			generateSegment( 0, true );
+
+		}
+
+		for ( i = 0; i <= nSeg; i ++ ) {
 
 			generateSegment( i );
 
@@ -25835,7 +25843,15 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 		//
 		// if the geometry is closed, duplicate the first row of vertices and normals (uvs will differ)
 
-		generateSegment( ( closed === false ) ? tubularSegments : 0 );
+		if( closed ){
+
+			generateSegment( 0 );
+
+		}else if( capped ){
+
+			generateSegment( nSeg, true );
+
+		}
 
 		// uvs are generated in a separate function.
 		// this makes it easy compute correct values for closed geometries
@@ -25848,11 +25864,12 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 	}
 
-	function generateSegment( i ) {
+	function generateSegment( i, isCap ) {
 
 		// we use getPointAt to sample evenly distributed points from the given path
 
-		var P = path.getPointAt( i / tubularSegments );
+		var P = tubularSegments ? path.getPointAt( i / nSeg ) :
+			path.curves[ ~~(i / 2) ].getPoint( i % 2 ? 1 - delta : delta );
 
 		// retrieve corresponding normal and binormal
 
@@ -25875,13 +25892,22 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 			normal.z = ( cos * N.z + sin * B.z );
 			normal.normalize();
 
-			normals.push( normal.x, normal.y, normal.z );
+			// Surface normals depend on whether it is a cap
+			if(isCap){
+
+				normals.push( N.x, N.y, N.z );
+
+			}else{
+
+				normals.push( normal.x, normal.y, normal.z );
+
+			}
 
 			// vertex
-
-			vertex.x = P.x + radius * normal.x;
-			vertex.y = P.y + radius * normal.y;
-			vertex.z = P.z + radius * normal.z;
+			var r = isCap ? 0 : radiusFn( P, N, tubularSegments ? i : ~~((i+1) / 2));
+			vertex.x = P.x + r * normal.x;
+			vertex.y = P.y + r * normal.y;
+			vertex.z = P.z + r * normal.z;
 
 			vertices.push( vertex.x, vertex.y, vertex.z );
 
@@ -25891,7 +25917,7 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 	function generateIndices() {
 
-		for ( j = 1; j <= tubularSegments; j ++ ) {
+		for ( j = 1; j <= nSegC; j ++ ) {
 
 			for ( i = 1; i <= radialSegments; i ++ ) {
 
@@ -25913,11 +25939,11 @@ function TubeBufferGeometry( path, tubularSegments, radius, radialSegments, clos
 
 	function generateUVs() {
 
-		for ( i = 0; i <= tubularSegments; i ++ ) {
+		for ( i = 0; i <= nSegC; i ++ ) {
 
 			for ( j = 0; j <= radialSegments; j ++ ) {
 
-				uv.x = i / tubularSegments;
+				uv.x = i / nSegC;
 				uv.y = j / radialSegments;
 
 				uvs.push( uv.x, uv.y );
@@ -35070,7 +35096,9 @@ Object.assign( Curve.prototype, {
 
 	},
 
-	computeFrenetFrames: function ( segments, closed ) {
+	computeFrenetFrames: function ( segments, closed, delta ) {
+
+		var nSeg = segments || this.curves.length * 2;
 
 		// see http://www.cs.indiana.edu/pub/techreports/TR425.pdf
 
@@ -35085,15 +35113,46 @@ Object.assign( Curve.prototype, {
 
 		var i, u, theta;
 
+		var totalLen = 0;
+		if( !segments ){
+
+			i = this.curves.length;
+			while( i-- ){
+
+				totalLen += this.curves[ i ].getLength();
+
+			}
+
+		}
+		var len = 0;
+		var cumLen = 0;
+
 		// compute the tangent vectors for each segment on the curve
 
-		for ( i = 0; i <= segments; i ++ ) {
+		for ( i = 0; i <= nSeg; i ++ ) {
 
-			u = i / segments;
+			// If regular segments, u is at fixed intervals
+			if(segments){
+
+				u = i / nSeg;
+
+			// Otherwise u is at variable intervals, that coincide with curve end-points
+			}else{
+
+				if( i % 2 ){
+
+					len = this.curves[ ~~(i / 2) ].getLength(); cumLen += len;
+
+				}
+				u = cumLen / totalLen;
+				u += ( i % 2 ? -delta : delta ) * len / totalLen;
+				u = Math.min(Math.max(u, 0), 1);
+			}
 
 			tangents[ i ] = this.getTangentAt( u );
 			tangents[ i ].normalize();
 
+//console.log("i", i, "u", u, "tangent", tangents[i]);
 		}
 
 		// select an initial normal vector perpendicular to the first tangent vector,
@@ -35134,7 +35193,7 @@ Object.assign( Curve.prototype, {
 
 		// compute the slowly-varying normal and binormal vectors for each segment on the curve
 
-		for ( i = 1; i <= segments; i ++ ) {
+		for ( i = 1; i <= nSeg; i ++ ) {
 
 			normals[ i ] = normals[ i - 1 ].clone();
 
@@ -35160,16 +35219,16 @@ Object.assign( Curve.prototype, {
 
 		if ( closed === true ) {
 
-			theta = Math.acos( _Math.clamp( normals[ 0 ].dot( normals[ segments ] ), - 1, 1 ) );
-			theta /= segments;
+			theta = Math.acos( _Math.clamp( normals[ 0 ].dot( normals[ nSeg ] ), - 1, 1 ) );
+			theta /= nSeg;
 
-			if ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ segments ] ) ) > 0 ) {
+			if ( tangents[ 0 ].dot( vec.crossVectors( normals[ 0 ], normals[ nSeg ] ) ) > 0 ) {
 
 				theta = - theta;
 
 			}
 
-			for ( i = 1; i <= segments; i ++ ) {
+			for ( i = 1; i <= nSeg; i ++ ) {
 
 				// twist a little...
 				normals[ i ].applyMatrix4( mat.makeRotationAxis( tangents[ i ], theta * i ) );
