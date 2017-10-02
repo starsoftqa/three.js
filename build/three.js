@@ -9739,7 +9739,7 @@
 		function remove( attribute ) {
 
 			if ( attribute.isInterleavedBufferAttribute ) attribute = attribute.data;
-			
+
 			var data = buffers[ attribute.uuid ];
 
 			if ( data ) {
@@ -10498,6 +10498,13 @@
 				object.parent = this;
 				object.dispatchEvent( { type: 'added' } );
 
+				var ancestor = object;
+				var depth = 1;
+				while(ancestor.parent){
+					ancestor = ancestor.parent;
+					ancestor.dispatchEvent({type:'child-added', object:object, depth:depth++});
+				}
+
 				this.children.push( object );
 
 			} else {
@@ -10527,6 +10534,13 @@
 			var index = this.children.indexOf( object );
 
 			if ( index !== - 1 ) {
+
+				var ancestor = object;
+				var depth = 1;
+				while(ancestor.parent){
+					ancestor = ancestor.parent;
+					ancestor.dispatchEvent({type:'child-removed', object:object, depth:depth++});
+				}
 
 				object.parent = null;
 
@@ -20762,7 +20776,7 @@
 			}
 
 			scope.numPlanes = nPlanes;
-			
+
 			return dstArray;
 
 		}

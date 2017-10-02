@@ -334,6 +334,13 @@ Object.assign( Object3D.prototype, EventDispatcher.prototype, {
 			object.parent = this;
 			object.dispatchEvent( { type: 'added' } );
 
+			var ancestor = object;
+			var depth = 1;
+			while(ancestor.parent){
+				ancestor = ancestor.parent;
+				ancestor.dispatchEvent({type:'child-added', object:object, depth:depth++});
+			}
+
 			this.children.push( object );
 
 		} else {
@@ -363,6 +370,13 @@ Object.assign( Object3D.prototype, EventDispatcher.prototype, {
 		var index = this.children.indexOf( object );
 
 		if ( index !== - 1 ) {
+
+			var ancestor = object;
+			var depth = 1;
+			while(ancestor.parent){
+				ancestor = ancestor.parent;
+				ancestor.dispatchEvent({type:'child-removed', object:object, depth:depth++});
+			}
 
 			object.parent = null;
 
